@@ -1,0 +1,144 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  COORDINATOR
+  BILLING
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  role         UserRole
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  activityEvents ActivityEvent[]
+}
+
+model Contractor {
+  id        String   @id @default(cuid())
+  name      String
+  email     String?
+  phone     String?
+  licenseNo String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  jobs Job[]
+}
+
+model Job {
+  id           String   @id @default(cuid())
+  jobNumber    String   @unique
+  customerName String
+  address      String
+  contractorId String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  contractor Contractor @relation(fields: [contractorId], references: [id])
+  permits    Permit[]
+}
+
+enum PermitStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+model Permit {
+  id          String       @id @default(cuid())
+  permitNo    String       @unique
+  type        String
+  description String?
+  status      PermitStatus @default(PENDING)
+  jobId       String
+  appliedAt   DateTime     @default(now())
+  approvedAt  DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  job       Job        @relation(fields: [jobId], references: [id])
+  tasks     Task[]
+  documents Document[]
+  notes     Note[]
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  COMPLETED
+}
+
+model Task {
+  id          String     @id @default(cuid())
+  title       String
+  description String?
+  status      TaskStatus @default(TODO)
+  dueDate     DateTime?
+  permitId    String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  permit Permit? @relation(fields: [permitId], references: [id])
+}
+
+enum DocumentCategory {
+  APPLICATION
+  APPROVAL
+  INSPECTION
+  INVOICE
+  OTHER
+}
+
+model Document {
+  id          String           @id @default(cuid())
+  fileName    String
+  category    DocumentCategory
+  version     Int              @default(1)
+  isCurrent   Boolean          @default(true)
+  storageKey  String
+  mimeType    String?
+  sizeBytes   Int?
+  permitId    String?
+  uploadedBy  String?
+  uploadedAt  DateTime         @default(now())
+  createdAt   DateTime         @default(now())
+
+  permit Permit? @relation(fields: [permitId], references: [id])
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  content   String
+  permitId  String?
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  permit Permit? @relation(fields: [permitId], references: [id])
+}
+
+model ActivityEvent {
+  id          String   @id @default(cuid())
+  action      String
+  entityType  String?
+  entityId    String?
+  metadata    Json?
+  userId      String?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+}
