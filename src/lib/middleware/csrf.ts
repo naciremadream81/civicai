@@ -7,12 +7,15 @@ if (!CSRF_SECRET) {
   throw new Error('CSRF_SECRET or JWT_SECRET must be set for CSRF protection');
 }
 
+// Type assertion after runtime check ensures CSRF_SECRET is a string
+const csrfSecret: string = CSRF_SECRET;
+
 /**
  * Generate a CSRF token
  */
 export function generateCsrfToken(sessionId: string): string {
   const token = randomBytes(32).toString('hex');
-  const hmac = createHmac('sha256', CSRF_SECRET);
+  const hmac = createHmac('sha256', csrfSecret);
   hmac.update(`${sessionId}:${token}`);
   return `${token}:${hmac.digest('hex')}`;
 }
@@ -26,7 +29,7 @@ export function validateCsrfToken(token: string, sessionId: string): boolean {
     return false;
   }
 
-  const hmac = createHmac('sha256', CSRF_SECRET);
+  const hmac = createHmac('sha256', csrfSecret);
   hmac.update(`${sessionId}:${tokenValue}`);
   const expectedHmac = hmac.digest('hex');
 

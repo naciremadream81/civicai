@@ -30,17 +30,50 @@ Full-stack application for managing building permits, contractors, jobs, documen
 
 ## Quick Start
 
-### 1. Start Database
+### Automated Setup (Recommended)
+
+Use the scaffold script to automate the entire setup process:
+
+```bash
+# Make the script executable (first time only)
+chmod +x scaffold.sh
+
+# Run the scaffold script
+./scaffold.sh
+
+# Or start development server after setup
+./scaffold.sh --dev
+
+# See all options
+./scaffold.sh --help
+```
+
+**The scaffold script will:**
+- ✅ Check all prerequisites (Node.js, npm, Docker)
+- ✅ Create `.env` file with secure JWT secret
+- ✅ Start PostgreSQL database container
+- ✅ Install all npm dependencies
+- ✅ Generate Prisma Client
+- ✅ Run database migrations
+- ✅ Seed database with initial data
+- ✅ Build the application (optional)
+- ✅ Start development server (optional)
+
+### Manual Setup
+
+If you prefer to set up manually:
+
+#### 1. Start Database
 ```bash
 docker-compose -f docker/docker-compose.yml up -d
 ```
 
-### 2. Install Dependencies
+#### 2. Install Dependencies
 ```bash
 npm install
 ```
 
-### 3. Setup Database
+#### 3. Setup Database
 ```bash
 npm run db:setup
 ```
@@ -50,7 +83,7 @@ This will:
 - Run database migrations
 - Seed initial data (users, contractor, job, permit, tasks)
 
-### 4. Run Development Server
+#### 4. Run Development Server
 ```bash
 npm run dev
 ```
@@ -66,6 +99,53 @@ Open [http://localhost:3000](http://localhost:3000)
 | billing@example.com | billing123 | BILLING | Read permits/jobs, Manage invoices |
 
 ⚠️ **SECURITY**: Change these passwords in production!
+
+## Scaffold Script Options
+
+The `scaffold.sh` script supports the following options with comprehensive error handling:
+
+```bash
+./scaffold.sh [options]
+
+Options:
+  --skip-deps     Skip dependency installation (useful if already installed)
+  --skip-db       Skip database setup (migrations and seeding)
+  --skip-build    Skip production build (faster for development setup)
+  --dev           Start development server after setup completes
+  --reset-db      Reset database before setup (⚠️ destroys all data)
+  --debug         Enable verbose debug output for troubleshooting
+  --help          Show help message
+```
+
+### Error Handling Features
+
+The scaffold script includes comprehensive error handling for:
+
+✅ **Port Conflicts**: Automatically detects if PostgreSQL port (5432) is in use and suggests alternatives
+✅ **Database Validation**: Validates database names, URLs, and connection strings
+✅ **Container Management**: Handles existing containers, stopped containers, and conflicts
+✅ **File Permissions**: Checks write permissions before creating files
+✅ **Disk Space**: Warns if insufficient disk space is available
+✅ **Network Connectivity**: Tests npm registry and database connections
+✅ **Dependency Verification**: Confirms critical dependencies are installed correctly
+✅ **Migration Errors**: Provides specific guidance for common migration failures
+✅ **Build Failures**: Offers solutions for TypeScript, memory, and dependency errors
+✅ **Graceful Cleanup**: Provides cleanup instructions if setup fails partway through
+
+**Examples:**
+```bash
+# Full setup including build
+./scaffold.sh
+
+# Quick development setup (skip build, start dev server)
+./scaffold.sh --skip-build --dev
+
+# Re-setup database only
+./scaffold.sh --skip-deps --reset-db
+
+# Fresh start with everything
+./scaffold.sh --reset-db --dev
+```
 
 ## Available Scripts
 
