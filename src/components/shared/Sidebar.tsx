@@ -36,12 +36,11 @@ const inspectorLinks = [
 ];
 
 const adminLinks = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/permits", label: "All Permits", icon: FileText },
-  { href: "/users", label: "User Management", icon: Users },
-  { href: "/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/settings", label: "Settings", icon: Settings },
-  { href: "/audit-logs", label: "Audit Logs", icon: FileText },
+  { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/admin/permits", label: "Applications", icon: FileText },
+  { href: "/admin/approvals", label: "Approvals", icon: ClipboardCheck },
+  { href: "/admin/analytics", label: "Reports", icon: BarChart3 },
+  { href: "/admin/users", label: "Users", icon: Users },
 ];
 
 export default function Sidebar({ role, isOpen, onClose }: SidebarProps) {
@@ -89,7 +88,18 @@ export default function Sidebar({ role, isOpen, onClose }: SidebarProps) {
             <ul className="space-y-2">
               {links.map((link) => {
                 const Icon = link.icon;
-                const isActive = pathname === link.href || pathname.startsWith(link.href + "/");
+                // Handle exact matches and nested routes
+                let isActive = pathname === link.href || pathname.startsWith(link.href + "/");
+                // Special case: map alternative routes to their target pages
+                if (link.href === "/admin/permits" && pathname === "/admin/applications") {
+                  isActive = true;
+                }
+                if (link.href === "/admin/approvals" && pathname === "/admin/approvals") {
+                  isActive = true;
+                }
+                if (link.href === "/admin/analytics" && pathname === "/admin/reports") {
+                  isActive = true;
+                }
                 
                 return (
                   <li key={link.href}>

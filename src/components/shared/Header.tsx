@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Moon, Sun, User, LogOut, Menu, Settings } from "lucide-react";
+import { Bell, Moon, Sun, User, LogOut, Menu, Settings, Search, X } from "lucide-react";
 import { useState } from "react";
 
 interface HeaderProps {
@@ -8,13 +8,15 @@ interface HeaderProps {
   userName?: string;
   userRole?: string;
   notificationCount?: number;
+  showSearch?: boolean;
 }
 
 export default function Header({ 
   onMenuClick, 
   userName = "User",
   userRole = "USER",
-  notificationCount = 0 
+  notificationCount = 0,
+  showSearch = false
 }: HeaderProps) {
   const [darkMode, setDarkMode] = useState(() => {
     if (typeof window !== "undefined" && window.matchMedia) {
@@ -24,6 +26,8 @@ export default function Header({
   });
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showSearchBar, setShowSearchBar] = useState(false);
 
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);
@@ -32,7 +36,7 @@ export default function Header({
 
   return (
     <header className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
-      <div className="flex items-center justify-between px-4 py-3 lg:px-6">
+      <div className="flex items-center justify-between px-4 py-3 lg:px-6 gap-4">
         {/* Left: Menu button (mobile) */}
         <button
           onClick={onMenuClick}
@@ -41,6 +45,64 @@ export default function Header({
         >
           <Menu className="w-6 h-6 text-gray-700" />
         </button>
+
+        {/* Global Search Bar */}
+        {showSearch && (
+          <div className="flex-1 max-w-2xl hidden lg:block">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search permits, applications, users..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-gray-50 focus:bg-white transition-colors"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1 hover:bg-gray-200 rounded-full transition-colors"
+                >
+                  <X className="w-4 h-4 text-gray-400" />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Mobile search toggle */}
+        {showSearch && (
+          <button
+            onClick={() => setShowSearchBar(!showSearchBar)}
+            className="lg:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            aria-label="Search"
+          >
+            <Search className="w-5 h-5 text-gray-700" />
+          </button>
+        )}
+
+        {/* Mobile search bar */}
+        {showSearch && showSearchBar && (
+          <div className="lg:hidden fixed top-16 left-0 right-0 bg-white border-b border-gray-200 p-4 z-40">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                autoFocus
+              />
+              <button
+                onClick={() => setShowSearchBar(false)}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1 hover:bg-gray-200 rounded-full transition-colors"
+              >
+                <X className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="lg:hidden flex-1" />
 

@@ -30,9 +30,38 @@ Full-stack application for managing building permits, contractors, jobs, documen
 
 ## Quick Start
 
-### Automated Setup (Recommended)
+### Creating a New Project (First Time)
 
-Use the scaffold script to automate the entire setup process:
+To create a new project from scratch in a new directory:
+
+```bash
+# Make the script executable (first time only)
+chmod +x create-project.sh
+
+# Create a new project
+./create-project.sh my-permit-app
+
+# Or create in a specific location
+./create-project.sh ~/projects/my-permit-app
+
+# Create and automatically run setup
+./create-project.sh my-permit-app --setup
+
+# See all options
+./create-project.sh --help
+```
+
+**This will:**
+- ✅ Create all necessary configuration files (package.json, tsconfig.json, etc.)
+- ✅ Create the complete directory structure
+- ✅ Copy all source files from the template
+- ✅ Create Docker configuration
+- ✅ Set up Prisma schema
+- ✅ Optionally run full setup
+
+### Setting Up an Existing Project
+
+If you already have a project (or after creating one), use the scaffold script:
 
 ```bash
 # Make the script executable (first time only)

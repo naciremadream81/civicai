@@ -10,6 +10,7 @@ interface DashboardLayoutProps {
   role: "CONTRACTOR" | "INSPECTOR" | "ADMIN";
   userName?: string;
   notificationCount?: number;
+  showSearch?: boolean;
 }
 
 export default function DashboardLayout({
@@ -17,6 +18,7 @@ export default function DashboardLayout({
   role,
   userName = "User",
   notificationCount = 0,
+  showSearch = false,
 }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -37,6 +39,7 @@ export default function DashboardLayout({
           userName={userName}
           userRole={role}
           notificationCount={notificationCount}
+          showSearch={showSearch}
         />
 
         {/* Main content */}

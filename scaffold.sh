@@ -19,7 +19,7 @@
 #   --help            Show this help message
 ###############################################################################
 
-set -euo pipefail  # Exit on error, undefined vars, pipe failures
+set -eo pipefail  # Exit on error, pipe failures (removed -u for optional variables)
 
 # Color codes for output
 RED='\033[0;31m'
@@ -143,27 +143,36 @@ print_debug() {
 check_port_available() {
     local port=$1
     local service=${2:-"unknown"}
+    local silent=${3:-false}
     
     if command -v lsof &> /dev/null; then
         if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
-            print_error "Port $port is already in use by another service"
-            print_info "To find what's using it: ${CYAN}lsof -i :$port${NC}"
-            print_info "Or specify a different port in .env: ${CYAN}POSTGRES_PORT=5433${NC}"
+            if [ "$silent" != "true" ]; then
+                print_error "Port $port is already in use by another service"
+                print_info "To find what's using it: ${CYAN}lsof -i :$port${NC}"
+                print_info "Or specify a different port in .env: ${CYAN}POSTGRES_PORT=5433${NC}"
+            fi
             return 1
         fi
     elif command -v netstat &> /dev/null; then
         if netstat -tuln 2>/dev/null | grep -q ":$port "; then
-            print_error "Port $port is already in use"
+            if [ "$silent" != "true" ]; then
+                print_error "Port $port is already in use"
+            fi
             return 1
         fi
     elif command -v ss &> /dev/null; then
         if ss -tuln 2>/dev/null | grep -q ":$port "; then
-            print_error "Port $port is already in use"
+            if [ "$silent" != "true" ]; then
+                print_error "Port $port is already in use"
+            fi
             return 1
         fi
     else
-        print_warning "Cannot check port availability (lsof/netstat/ss not found)"
-        print_info "Please manually verify port $port is available"
+        if [ "$silent" != "true" ]; then
+            print_warning "Cannot check port availability (lsof/netstat/ss not found)"
+            print_info "Please manually verify port $port is available"
+        fi
     fi
     
     return 0
@@ -240,11 +249,16 @@ check_disk_space() {
         if [ "$available_mb" -lt "$required_mb" ]; then
             print_warning "Low disk space: ${available_mb}MB available (recommended: ${required_mb}MB+)"
             print_info "The setup may fail if there's not enough space for dependencies and database"
-            read -p "Continue anyway? (y/N) " -n 1 -r
-            echo
-            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-                print_error "Setup cancelled by user"
-                exit 1
+            
+            if [ -t 0 ]; then
+                read -p "Continue anyway? (y/N) " -n 1 -r || REPLY="N"
+                echo
+                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                    print_error "Setup cancelled by user"
+                    exit 1
+                fi
+            else
+                print_warning "Non-interactive mode: Continuing despite low disk space"
             fi
         else
             print_success "Sufficient disk space available (${available_mb}MB free)"
@@ -421,14 +435,18 @@ setup_environment() {
             fi
         fi
         
-        # Ask user if they want to regenerate
-        print_info "If you need to regenerate, delete .env and run this script again."
-        print_info "Or edit .env manually if you just need to update values."
-        read -p "Continue with existing .env file? (Y/n) " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Nn]$ ]]; then
-            print_info "To regenerate .env, run: ${CYAN}rm .env && ./scaffold.sh${NC}"
-            exit 0
+        # Ask user if they want to regenerate (only if TTY available)
+        if [ -t 0 ]; then
+            print_info "If you need to regenerate, delete .env and run this script again."
+            print_info "Or edit .env manually if you just need to update values."
+            read -p "Continue with existing .env file? (Y/n) " -n 1 -r || REPLY="Y"
+            echo
+            if [[ $REPLY =~ ^[Nn]$ ]]; then
+                print_info "To regenerate .env, run: ${CYAN}rm .env && ./scaffold.sh${NC}"
+                exit 0
+            fi
+        else
+            print_info "Non-interactive mode: Using existing .env file"
         fi
         
         # Extract values from existing .env or use defaults
@@ -437,8 +455,11 @@ setup_environment() {
         POSTGRES_DB="${POSTGRES_DB:-permitdb}"
         POSTGRES_PORT="${POSTGRES_PORT:-5432}"
         
-        # Check port availability even with existing .env
-        check_port_available "$POSTGRES_PORT" "PostgreSQL"
+        # Check port availability even with existing .env (non-fatal)
+        if ! check_port_available "$POSTGRES_PORT" "PostgreSQL"; then
+            print_warning "Port $POSTGRES_PORT is in use. Database setup may fail."
+            print_info "Consider changing POSTGRES_PORT in .env file"
+        fi
         
         return
     fi
@@ -477,11 +498,18 @@ setup_environment() {
     
     # Check port availability
     print_step "Checking PostgreSQL port availability..."
-    if ! check_port_available "$POSTGRES_PORT" "PostgreSQL"; then
+    local port_check_result=0
+    check_port_available "$POSTGRES_PORT" "PostgreSQL" || port_check_result=$?
+    
+    if [ $port_check_result -ne 0 ]; then
         # Suggest alternative port
         local alt_port=$((POSTGRES_PORT + 1))
         print_info "Trying alternative port: $alt_port"
-        if check_port_available "$alt_port" "PostgreSQL"; then
+        
+        local alt_port_check=0
+        check_port_available "$alt_port" "PostgreSQL" || alt_port_check=$?
+        
+        if [ $alt_port_check -eq 0 ]; then
             POSTGRES_PORT=$alt_port
             print_warning "Using alternative port: $POSTGRES_PORT"
             print_info "Update docker-compose.yml if you want to use a different port"
@@ -567,10 +595,12 @@ setup_database() {
     
     # Load environment variables from .env if exists
     if [ -f ".env" ]; then
+        set +e  # Temporarily disable exit on error for sourcing .env
         set -a
         # shellcheck source=/dev/null
-        . .env
+        . .env 2>/dev/null || true
         set +a
+        set -e  # Re-enable exit on error
     fi
     
     # Use exported values or defaults
@@ -600,11 +630,16 @@ setup_database() {
         else
             print_warning "Container '${container_name}' exists but is stopped"
             print_info "Container status: $container_status"
-            read -p "Start existing container? (Y/n) " -n 1 -r
-            echo
-            if [[ $REPLY =~ ^[Nn]$ ]]; then
-                print_info "To remove and recreate: ${CYAN}docker rm ${container_name} && ./scaffold.sh${NC}"
-                exit 0
+            
+            if [ -t 0 ]; then
+                read -p "Start existing container? (Y/n) " -n 1 -r || REPLY="Y"
+                echo
+                if [[ $REPLY =~ ^[Nn]$ ]]; then
+                    print_info "To remove and recreate: ${CYAN}docker rm ${container_name} && ./scaffold.sh${NC}"
+                    exit 0
+                fi
+            else
+                print_info "Non-interactive mode: Starting existing container"
             fi
             
             print_step "Starting existing container..."
@@ -618,7 +653,10 @@ setup_database() {
     
     # Check for port conflicts before starting
     print_step "Checking for port conflicts..."
-    if ! check_port_available "$postgres_port" "PostgreSQL"; then
+    local port_conflict=0
+    check_port_available "$postgres_port" "PostgreSQL" || port_conflict=$?
+    
+    if [ $port_conflict -ne 0 ]; then
         print_error "Port $postgres_port is already in use"
         print_info "Options:"
         echo "  1. Stop the service using port $postgres_port"
@@ -807,10 +845,12 @@ setup_prisma() {
     
     # Check DATABASE_URL is set
     if [ -f ".env" ]; then
+        set +e  # Temporarily disable exit on error for sourcing .env
         set -a
         # shellcheck source=/dev/null
-        . .env
+        . .env 2>/dev/null || true
         set +a
+        set -e  # Re-enable exit on error
     fi
     
     if [ -z "${DATABASE_URL:-}" ]; then
@@ -909,34 +949,115 @@ setup_prisma() {
     
     # Seed database
     print_step "Seeding database with initial data..."
-    if ! npm run db:seed 2>&1; then
-        print_error "Failed to seed database"
-        
-        # Check for common seeding errors
-        if ! command -v tsx &> /dev/null && ! npm list tsx &> /dev/null 2>&1; then
-            print_info "tsx is missing. Installing..."
-            npm install --save-dev tsx
-            # Retry seeding
-            if npm run db:seed 2>&1; then
-                print_success "Database seeded after installing tsx"
-            else
-                print_error "Seeding failed even after installing tsx"
-                exit 1
-            fi
-        else
-            print_info "Check that:"
-            echo "  1. Database migrations completed successfully"
-            echo "  2. All dependencies are installed: npm install"
-            echo "  3. Seed script is valid: prisma/seed.ts"
-            exit 1
-        fi
+    local seed_output seed_exit_code
+    
+    # Capture both stdout and stderr
+    if seed_output=$(npm run db:seed 2>&1); then
+        seed_exit_code=0
     else
+        seed_exit_code=$?
+    fi
+    
+    if [ $seed_exit_code -eq 0 ]; then
         print_success "Database seeded successfully"
         print_info "Default users created:"
         echo "  • admin@example.com / admin123 (ADMIN)"
         echo "  • coord@example.com / coord123 (COORDINATOR)"
         echo "  • billing@example.com / billing123 (BILLING)"
         print_warning "⚠️  Remember to change these passwords in production!"
+    else
+        print_error "Failed to seed database (exit code: $seed_exit_code)"
+        
+        # Check for common seeding errors
+        if echo "$seed_output" | grep -qi "tsx.*not.*found\|command.*not.*found.*tsx"; then
+            print_info "tsx is missing. Installing..."
+            if npm install --save-dev tsx 2>&1; then
+                print_info "Retrying database seed..."
+                if npm run db:seed 2>&1; then
+                    print_success "Database seeded after installing tsx"
+                else
+                    print_error "Seeding failed even after installing tsx"
+                    exit 1
+                fi
+            else
+                print_error "Failed to install tsx"
+                exit 1
+            fi
+        elif echo "$seed_output" | grep -qi "baseUrl.*not.*set\|Non-relative paths"; then
+            print_error "TypeScript configuration error detected"
+            print_info "tsconfig.json has path aliases but is missing 'baseUrl'"
+            print_info "This is a configuration issue, not a scaffold script issue"
+            print_info "The scaffold script will try to fix this..."
+            
+            # Try to fix tsconfig.json
+            if [ -f "tsconfig.json" ] && ! grep -q '"baseUrl"' tsconfig.json; then
+                print_step "Adding baseUrl to tsconfig.json..."
+                # Use sed or Python to add baseUrl before paths
+                if command -v python3 &> /dev/null; then
+                    python3 << 'PYTHON_EOF'
+import json
+import sys
+
+try:
+    with open('tsconfig.json', 'r') as f:
+        config = json.load(f)
+    
+    if 'compilerOptions' not in config:
+        config['compilerOptions'] = {}
+    
+    if 'baseUrl' not in config['compilerOptions'] and 'paths' in config['compilerOptions']:
+        # Insert baseUrl before paths
+        comp_opts = config['compilerOptions']
+        new_comp_opts = {}
+        for key, value in comp_opts.items():
+            if key == 'paths':
+                new_comp_opts['baseUrl'] = '.'
+            new_comp_opts[key] = value
+        
+        config['compilerOptions'] = new_comp_opts
+        
+        with open('tsconfig.json', 'w') as f:
+            json.dump(config, f, indent=2)
+        
+        print("✓ Added baseUrl to tsconfig.json")
+        sys.exit(0)
+    else:
+        print("⚠ baseUrl already exists or paths not found")
+        sys.exit(1)
+except Exception as e:
+    print(f"✗ Error: {e}")
+    sys.exit(1)
+PYTHON_EOF
+                    if [ $? -eq 0 ]; then
+                        print_success "Fixed tsconfig.json - retrying seed..."
+                        if npm run db:seed 2>&1; then
+                            print_success "Database seeded successfully after fixing tsconfig.json"
+                        else
+                            print_error "Seeding still failed after fixing tsconfig.json"
+                            exit 1
+                        fi
+                    else
+                        print_warning "Could not automatically fix tsconfig.json"
+                        print_info "Manually add 'baseUrl: \".\"' to compilerOptions in tsconfig.json"
+                        exit 1
+                    fi
+                else
+                    print_warning "Python not available to fix tsconfig.json automatically"
+                    print_info "Manually add 'baseUrl: \".\"' to compilerOptions in tsconfig.json"
+                    exit 1
+                fi
+            fi
+        else
+            print_info "Seed error details:"
+            echo "$seed_output" | tail -20
+            print_info ""
+            print_info "Common fixes:"
+            echo "  1. Check database migrations completed: ${CYAN}npm run db:migrate${NC}"
+            echo "  2. Verify all dependencies: ${CYAN}npm install${NC}"
+            echo "  3. Check seed script: ${CYAN}cat prisma/seed.ts${NC}"
+            echo "  4. Check tsconfig.json for TypeScript configuration issues"
+            exit 1
+        fi
     fi
 }
 
@@ -971,11 +1092,16 @@ build_application() {
     if [ ${#missing_files[@]} -gt 0 ]; then
         print_error "Required files/directories missing: ${missing_files[*]}"
         print_info "This may indicate an incomplete project structure"
-        read -p "Continue anyway? (y/N) " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            print_error "Build cancelled by user"
-            exit 1
+        
+        if [ -t 0 ]; then
+            read -p "Continue anyway? (y/N) " -n 1 -r || REPLY="N"
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                print_error "Build cancelled by user"
+                exit 1
+            fi
+        else
+            print_warning "Non-interactive mode: Continuing anyway"
         fi
     fi
     
@@ -1019,11 +1145,15 @@ build_application() {
         print_info "To skip build next time: ${CYAN}./scaffold.sh --skip-build${NC}"
         
         # Ask if user wants to continue despite build failure
-        read -p "Continue despite build failure? (y/N) " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            print_error "Setup cancelled. Fix build errors and try again."
-            exit 1
+        if [ -t 0 ]; then
+            read -p "Continue despite build failure? (y/N) " -n 1 -r || REPLY="N"
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                print_error "Setup cancelled. Fix build errors and try again."
+                exit 1
+            fi
+        else
+            print_warning "Non-interactive mode: Continuing despite build failure"
         fi
     fi
 }
